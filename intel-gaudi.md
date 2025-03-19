@@ -1,7 +1,3 @@
-Absolutely! Writing a blog in Hugging Face's style involves a mix of technical depth, accessibility, and enthusiasm for open-source AI advancements. Below is a draft blog post about Intel Gaudi's integration into Hugging Face's `text-generation-inference` project. Feel free to tweak it as needed!
-
----
-
 # 🚀 Intel Gaudi Meets Hugging Face: Supercharging Text Generation Inference
 
 We’re thrilled to announce that **Intel Gaudi accelerators** are now integrated into Hugging Face’s [**Text Generation Inference (TGI)**](https://github.com/huggingface/text-generation-inference) project! This collaboration brings together the power of Intel’s high-performance AI hardware and Hugging Face’s state-of-the-art NLP software stack, enabling faster, more efficient, and scalable text generation for everyone.
@@ -52,28 +48,62 @@ Ready to try it out? Here’s a quick guide to deploying a text generation model
 Ensure you have access to a Gaudi accelerator and install the required dependencies:
 
 ```bash
-# Install Text Generation Inference with Gaudi support
-pip install text-generation-inference[gaudi]
+# Build Text Generation Inference image with Gaudi support
+git clone https://github.com/huggingface/text-generation-inference.git
+cd text-generation-inference/backends/gaudi
+make image
 ```
 
 ### Step 2: Deploy Your Model
 Use the TGI CLI to deploy a model on Gaudi:
 
 ```bash
-text-generation-launcher --model-id gpt2 --gaudi
+model=meta-llama/Meta-Llama-3.1-8B-Instruct
+docker run -it  -p 8080:80 \
+   --runtime=habana \
+   -v $volume:/data \
+   -e HABANA_VISIBLE_DEVICES=all \
+   -e HUGGING_FACE_HUB_TOKEN=$hf_token \
+   -e HUGGINGFACE_HUB_CACHE=/data/hub \
+   -e OMPI_MCA_btl_vader_single_copy_mechanism=none \
+   -e TEXT_GENERATION_SERVER_IGNORE_EOS_TOKEN=true \
+   -e PREFILL_BATCH_BUCKET_SIZE=16 \
+   -e BATCH_BUCKET_SIZE=16 \
+   -e PAD_SEQUENCE_TO_MULTIPLE_OF=128 \
+   -e ENABLE_HPU_GRAPH=true \
+   -e LIMIT_HPU_GRAPH=true \
+   -e USE_FLASH_ATTENTION=true \
+   -e FLASH_ATTENTION_RECOMPUTE=true \
+   --cap-add=sys_nice \
+   --ipc=host \
+   $image --model-id $model \
+   --max-input-length 1024 --max-total-tokens 2048 \
+   --max-batch-prefill-tokens 65536 --max-batch-size 64 \
+   --max-waiting-tokens 7 --waiting-served-ratio 1.2 --max-concurrent-requests 256
 ```
 
 ### Step 3: Generate Text
 Send requests to your deployed model using the TGI API:
 
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:8080/generate",
-    json={"inputs": "Once upon a time", "parameters": {"max_new_tokens": 50}}
-)
-print(response.json())
+```bash
+curl localhost:8080/v1/chat/completions \
+    -X POST \
+    -d '{
+  "model": "tgi",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "What is deep learning?"
+    }
+  ],
+  "stream": true,
+  "max_tokens": 20
+}' \
+    -H 'Content-Type: application/json'
 ```
 
 ---
